@@ -3,6 +3,7 @@ from django.views.generic import FormView
 
 from .models import Setting
 from .form import ControllerForm
+from  .tasks import get_controller_state
 
 
 class ControllerView(FormView):
@@ -16,7 +17,7 @@ class ControllerView(FormView):
         return context
 
     def get_initial(self):
-        return {}
+        return get_controller_state()
 
     def form_valid(self, form):
         return super(ControllerView, self).form_valid(form)

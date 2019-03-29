@@ -122,8 +122,9 @@ STATIC_URL = '/static/'
 SMART_HOME_ACCESS_TOKEN = os.getenv('SMART_HOME_ACCESS_TOKEN', '527ebcc42fb4a02334fc8a8da6c0389f26f53febe3a343f19ae04921162bd9ad')
 SMART_HOME_API_URL = os.getenv('SMART_HOME_API_URL', 'http://smarthome.t3st.ru/api/user.controller')
 EMAIL_HOST  = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_HOST_USER  = os.getenv('EMAIL_HOST_USER', 'igor.agarkov.007@gmail.com')
 EMAIL_PORT  = os.getenv('EMAIL_PORT', '587')
-EMAIL_RECEPIENT  = os.getenv('EMAIL_RECEPIENT', 'igor.agarkov.007@gmail.com')
+EMAIL_RECEPIENT  = os.getenv('EMAIL_RECEPIENT', 'i.agarkov@exiptech.com')
 
 CELERY_BROKER_URL = 'redis://127.0.0.1:6379'
 CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379'
