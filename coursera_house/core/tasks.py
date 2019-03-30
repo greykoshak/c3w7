@@ -27,6 +27,7 @@ def smart_home_manager():
             new_states['cold_water'] = "false"  # Close cold water
         if current_state['hot_water']:
             new_states['hot_water'] = "false"  # Close hot water
+        send_alert("Leak!")
 
     # 2. Нет холодной воды
     if not current_state['cold_water']:
@@ -41,17 +42,16 @@ def smart_home_manager():
     if (current_state['boiler_temperature'] <= hot_water_target_temperature * 0.9) and \
             not current_state['boiler'] and not current_state['leak_detector']:
         new_states['boiler'] = "true"
-    elif (current_state['boiler_temperature'] > hot_water_target_temperature * 1.1) and \
-            not current_state['boiler']:
+    elif (current_state['boiler_temperature'] > hot_water_target_temperature * 1.1) and current_state['boiler']:
         new_states['boiler'] = "false"
 
     # 5. Управлением шторами
     if current_state['outdoor_light'] <= 50 and not current_state['bedroom_light'] and \
-                    current_state['curtains'] != 'slightly_open':
-            new_states['curtains'] = "open"  # Open curtains
+                    current_state['curtains'] == 'close':
+        new_states['curtains'] = "open"  # Open curtains
     elif (current_state['outdoor_light'] > 50 or current_state['bedroom_light']) and \
-                    current_state['curtains'] != 'slightly_open':
-            new_states['curtains'] = "close"  # Close curtains
+                    current_state['curtains'] == 'open':
+        new_states['curtains'] = "close"  # Close curtains
 
     # 6. Задымление
     if current_state['smoke_detector']:
@@ -82,7 +82,9 @@ def smart_home_manager():
 
     return
 
-def create_states(dict_states: dict) ->dict:
+
+# Создать управляющую структуру для умного дома
+def create_states(dict_states: dict) -> dict:
     change_state = {}
 
     if dict_states:
@@ -130,7 +132,7 @@ def put_controller_state(payload_dict: dict):
 def get_value(controller_name: str, current_value, default_value: int) -> int:
     try:
         obj = Setting.objects.get(controller_name=controller_name)
-        if  current_value is not None and obj.value != current_value:
+        if current_value is not None and obj.value != current_value:
             obj = Setting(controller_name=controller_name, value=current_value)
             obj.save()
     except Setting.DoesNotExist:
@@ -168,4 +170,3 @@ def send_alert(message):
 #
 #     ]
 # }
-
