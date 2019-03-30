@@ -89,7 +89,8 @@ def create_states(dict_states: dict) -> dict:
 
     if dict_states:
         change_state["controllers"] = list()
-
+        # change_state["controllers"] = [change_state['controllers']
+        #                                    .append({"name": key, "value": value}) for key, value in dict_states.items()]
         for key, value in dict_states.items():
             change_state['controllers'].append({"name": key, "value": value})
 
@@ -133,8 +134,7 @@ def get_value(controller_name: str, current_value, default_value: int) -> int:
     try:
         obj = Setting.objects.get(controller_name=controller_name)
         if current_value is not None and obj.value != current_value:
-            obj = Setting(controller_name=controller_name, value=current_value)
-            obj.save()
+            obj.update(value=current_value)
     except Setting.DoesNotExist:
         obj = Setting(controller_name=controller_name, value=default_value)
         obj.save()
