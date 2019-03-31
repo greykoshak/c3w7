@@ -11,7 +11,6 @@ from django.http import HttpResponse
 from coursera_house.settings import SMART_HOME_API_URL, EMAIL_HOST_USER, EMAIL_RECEPIENT, SMART_HOME_ACCESS_TOKEN
 from .models import Setting
 
-
 HEADERS = {
     'Authorization': 'Bearer ' + SMART_HOME_ACCESS_TOKEN
 }
@@ -25,15 +24,15 @@ def smart_home_manager():
     # 1. Утечка воды
     if current_state['leak_detector']:
         if current_state['cold_water']:
-            new_states['cold_water'] = "false"  # Close cold water
+            new_states['cold_water'] = False  # Close cold water
         if current_state['hot_water']:
-            new_states['hot_water'] = "false"  # Close hot water
+            new_states['hot_water'] = False  # Close hot water
         send_alert("Leak!")
 
     # 2. Нет холодной воды
     if not current_state['cold_water']:
         if current_state['boiler']:
-            new_states['boiler'] = "false"  # Switch off boiler
+            new_states['boiler'] = False  # Switch off boiler
         if current_state['washing_machine'] == 'on':
             new_states['washing_machine'] = "off"  # Switch off boiler
 
@@ -42,28 +41,28 @@ def smart_home_manager():
 
     if (current_state['boiler_temperature'] <= int(hot_water_target_temperature * 0.9)) and \
             not current_state['boiler'] and not current_state['leak_detector']:
-        new_states['boiler'] = "true"
+        new_states['boiler'] = True
     elif (current_state['boiler_temperature'] > int(hot_water_target_temperature * 1.1)) and current_state['boiler']:
-        new_states['boiler'] = "false"
+        new_states['boiler'] = False
 
     # 5. Управлением шторами
     if current_state['outdoor_light'] <= 50 and not current_state['bedroom_light'] and \
-                    current_state['curtains'] == 'close':
+            current_state['curtains'] == 'close':
         new_states['curtains'] = "open"  # Open curtains
     elif (current_state['outdoor_light'] > 50 or current_state['bedroom_light']) and \
-                    current_state['curtains'] == 'open':
+            current_state['curtains'] == 'open':
         new_states['curtains'] = "close"  # Close curtains
 
     # 6. Задымление
     if current_state['smoke_detector']:
         if current_state['air_conditioner']:
-            new_states['air_conditioner'] = "false"  # Switch off air_conditioner
+            new_states['air_conditioner'] = False  # Switch off air_conditioner
         if current_state['bedroom_light']:
-            new_states['bedroom_light'] = "false"  # Switch off bedroom_light
+            new_states['bedroom_light'] = False  # Switch off bedroom_light
         if current_state['bathroom_light']:
-            new_states['bathroom_light'] = "false"  # Switch off bathroom_light
+            new_states['bathroom_light'] = False  # Switch off bathroom_light
         if current_state['boiler']:
-            new_states['boiler'] = "false"  # Switch off boiler
+            new_states['boiler'] = False  # Switch off boiler
         if current_state['washing_machine'] == 'on':
             new_states['washing_machine'] = "off"  # Switch off washing_machine
 
@@ -72,10 +71,10 @@ def smart_home_manager():
 
     if (current_state['bedroom_temperature'] > int(bedroom_target_temperature * 1.1)) and \
             not current_state['air_conditioner']:
-        new_states['air_conditioner'] = "true"
+        new_states['air_conditioner'] = True
     elif current_state['bedroom_temperature'] <= int(bedroom_target_temperature * 0.9) and \
             not current_state['air_conditioner']:
-        new_states['air_conditioner'] = "false"
+        new_states['air_conditioner'] = False
 
     if new_states:
         change_state = create_states(new_states)

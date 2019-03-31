@@ -47,15 +47,21 @@ class ControllerView(FormView):
             new_states = {}
             if not self.states['smoke_detector']:
                 if bathroom_light != self.states['bathroom_light']:
-                    new_states['bathroom_light'] = "true" if bathroom_light else "false"
+                    new_states['bathroom_light'] = bathroom_light
                 if bedroom_light != self.states['bedroom_light']:
-                    new_states['bedroom_light'] = "true" if bedroom_light else "false"
+                    new_states['bedroom_light'] = bedroom_light
                 if (self.states['bedroom_temperature'] > int(bedroom_target_temperature * 1.1)) and \
                         not self.states['air_conditioner']:
-                    new_states['air_conditioner'] = "true"
-                if (self.states['boiler_temperature'] < int(hot_water_target_temperature * 0.9)) and \
+                    new_states['air_conditioner'] = True
+                elif self.states['bedroom_temperature'] <= int(bedroom_target_temperature * 0.9) and \
+                        not self.states['air_conditioner']:
+                    new_states['air_conditioner'] = False
+                if (self.states['boiler_temperature'] <= int(hot_water_target_temperature * 0.9)) and \
                         not self.states['boiler'] and not self.states['leak_detector']:
-                    new_states['boiler'] = "true"
+                    new_states['boiler'] = True
+                elif (self.states['boiler_temperature'] > int(hot_water_target_temperature * 1.1)) and \
+                        self.states['boiler']:
+                    new_states['boiler'] = False
 
             if new_states:
                 change_state = dict()
