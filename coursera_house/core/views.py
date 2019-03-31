@@ -3,7 +3,7 @@ from django.urls import reverse_lazy
 from django.views.generic import FormView
 
 from .form import ControllerForm
-from .tasks import get_controller_state, get_value, put_controller_state
+from .tasks import get_controller_state, get_value_DB, set_value_DB, put_controller_state
 
 
 class ControllerView(FormView):
@@ -20,8 +20,8 @@ class ControllerView(FormView):
 
     def get_initial(self):
         # Set initial values from DB to form
-        bedroom_target_temperature = get_value("bedroom_target_temperature", None, 21)
-        hot_water_target_temperature = get_value("hot_water_target_temperature", None, 80)
+        bedroom_target_temperature = get_value_DB("bedroom_target_temperature", 21)
+        hot_water_target_temperature = get_value_DB("hot_water_target_temperature", 80)
 
         return {"bedroom_target_temperature": bedroom_target_temperature,
                 "hot_water_target_temperature": hot_water_target_temperature,
@@ -36,10 +36,10 @@ class ControllerView(FormView):
         if form.is_valid():
 
             bedroom = form.cleaned_data['bedroom_target_temperature']
-            bedroom_target_temperature = get_value("bedroom_target_temperature", bedroom, 21)
+            bedroom_target_temperature = set_value_DB("bedroom_target_temperature", bedroom)
 
             hot_water = form.cleaned_data['hot_water_target_temperature']
-            hot_water_target_temperature = get_value("hot_water_target_temperature", hot_water, 80)
+            hot_water_target_temperature = set_value_DB("hot_water_target_temperature", hot_water)
 
             bedroom_light = form.cleaned_data['bedroom_light']
             bathroom_light = form.cleaned_data['bathroom_light']
@@ -50,10 +50,10 @@ class ControllerView(FormView):
                     new_states['bathroom_light'] = "true" if bathroom_light else "false"
                 if bedroom_light != self.states['bedroom_light']:
                     new_states['bedroom_light'] = "true" if bedroom_light else "false"
-                if (self.states['bedroom_temperature'] > bedroom_target_temperature * 1.1) and \
+                if (self.states['bedroom_temperature'] > int(bedroom_target_temperature * 1.1)) and \
                         not self.states['air_conditioner']:
                     new_states['air_conditioner'] = "true"
-                if (self.states['boiler_temperature'] < hot_water_target_temperature * 0.9) and \
+                if (self.states['boiler_temperature'] < int(hot_water_target_temperature * 0.9)) and \
                         not self.states['boiler'] and not self.states['leak_detector']:
                     new_states['boiler'] = "true"
 

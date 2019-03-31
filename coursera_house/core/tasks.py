@@ -8,8 +8,9 @@ from celery import task
 from django.core.mail import send_mail
 from django.http import HttpResponse
 
-from coursera_house.settings import SMART_HOME_ACCESS_TOKEN, SMART_HOME_API_URL, EMAIL_HOST_USER, EMAIL_RECEPIENT
+from coursera_house.settings import SMART_HOME_API_URL, EMAIL_HOST_USER, EMAIL_RECEPIENT, SMART_HOME_ACCESS_TOKEN
 from .models import Setting
+
 
 HEADERS = {
     'Authorization': 'Bearer ' + SMART_HOME_ACCESS_TOKEN
@@ -37,12 +38,12 @@ def smart_home_manager():
             new_states['washing_machine'] = "off"  # Switch off boiler
 
     # 3. Температура горячей воды (бойлер)
-    hot_water_target_temperature = get_value("hot_water_target_temperature", None, 80)
+    hot_water_target_temperature = get_value_DB("hot_water_target_temperature", 80)
 
-    if (current_state['boiler_temperature'] <= hot_water_target_temperature * 0.9) and \
+    if (current_state['boiler_temperature'] <= int(hot_water_target_temperature * 0.9)) and \
             not current_state['boiler'] and not current_state['leak_detector']:
         new_states['boiler'] = "true"
-    elif (current_state['boiler_temperature'] > hot_water_target_temperature * 1.1) and current_state['boiler']:
+    elif (current_state['boiler_temperature'] > int(hot_water_target_temperature * 1.1)) and current_state['boiler']:
         new_states['boiler'] = "false"
 
     # 5. Управлением шторами
@@ -67,12 +68,12 @@ def smart_home_manager():
             new_states['washing_machine'] = "off"  # Switch off washing_machine
 
     # 7. Температура в спальне (air_conditioner)
-    bedroom_target_temperature = get_value("bedroom_target_temperature", None, 21)
+    bedroom_target_temperature = get_value_DB("bedroom_target_temperature", 21)
 
-    if (current_state['bedroom_temperature'] > bedroom_target_temperature * 1.1) and \
+    if (current_state['bedroom_temperature'] > int(bedroom_target_temperature * 1.1)) and \
             not current_state['air_conditioner']:
         new_states['air_conditioner'] = "true"
-    elif (current_state['bedroom_temperature'] <= bedroom_target_temperature * 0.9) and \
+    elif current_state['bedroom_temperature'] <= int(bedroom_target_temperature * 0.9) and \
             not current_state['air_conditioner']:
         new_states['air_conditioner'] = "false"
 
@@ -130,14 +131,23 @@ def put_controller_state(payload_dict: dict):
     return
 
 
-def get_value(controller_name: str, current_value, default_value: int) -> int:
+# Get value from DB
+def get_value_DB(controller_name: str, default_value: int) -> int:
     try:
         obj = Setting.objects.get(controller_name=controller_name)
-        if current_value is not None and obj.value != current_value:
-            obj.update(value=current_value)
     except Setting.DoesNotExist:
         obj = Setting(controller_name=controller_name, value=default_value)
         obj.save()
+    return obj.value
+
+
+def set_value_DB(controller_name: str, current_value: int):
+    try:
+        obj = Setting.objects.get(controller_name=controller_name)
+        obj.value = current_value
+        obj.save()
+    except Setting.DoesNotExist:
+        return HttpResponse(status=502)
     return obj.value
 
 
