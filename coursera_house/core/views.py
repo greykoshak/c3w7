@@ -14,22 +14,22 @@ class ControllerView(FormView):
     states = get_controller_state()
 
     def get(self, request, *args, **kwargs):
-        data = self.get_controller_stats()
-        if not data:
+        self.states = get_controller_state()
+        if not self.states:
             return HttpResponse(status=502)
         return super().get(request, *args, **kwargs)
 
-    def post(self, request, *args, **kwargs):
-        try:
-            self.states = get_controller_state()
-        except (RequestException, KeyError, ValueError):
-            return HttpResponse(status=502)
-
-        return super().get(request, *args, **kwargs)
+    # def post(self, request, *args, **kwargs):
+    #     try:
+    #         self.states = get_controller_state()
+    #     except (RequestException, KeyError, ValueError):
+    #         return HttpResponse(status=502)
+    #
+    #     return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super(ControllerView, self).get_context_data()
-        context['data'] = get_controller_state()
+        context['data'] = self.states
 
         return context
 
