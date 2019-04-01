@@ -8,12 +8,12 @@ from celery import task
 from django.core.mail import send_mail
 from django.http import HttpResponse
 
-from coursera_house.settings import SMART_HOME_API_URL, EMAIL_HOST_USER, EMAIL_RECEPIENT, SMART_HOME_ACCESS_TOKEN
+from django.conf import settings  # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+from requests import RequestException
+
 from .models import Setting
 
-HEADERS = {
-    'Authorization': 'Bearer ' + SMART_HOME_ACCESS_TOKEN
-}
+HEADERS = {'Authorization': 'Bearer {}'.format(settings.SMART_HOME_ACCESS_TOKEN)}
 
 
 @task()
@@ -102,7 +102,7 @@ def get_controller_state():
     controller_data = dict()
 
     try:
-        response = requests.get(SMART_HOME_API_URL, headers=HEADERS)
+        response = requests.get(settings.SMART_HOME_API_URL, headers=HEADERS)
         response.raise_for_status()
         r = response.json()
 
@@ -114,15 +114,15 @@ def get_controller_state():
                 controller_data[rec['name']] = rec['value']
         else:
             return HttpResponse(status=502)
-    except requests.exceptions.HTTPError as err_http:
-        print("HTTP error:", err_http)
+    except  (RequestException, KeyError, ValueError):
+        return HttpResponse(status=502)
     return controller_data
 
 
 # Record new states of controllers
 def put_controller_state(payload_dict: dict):
     try:
-        r = requests.post(SMART_HOME_API_URL, headers=HEADERS, data=json.dumps(payload_dict))
+        r = requests.post(settings.SMART_HOME_API_URL, headers=HEADERS, data=json.dumps(payload_dict))
         r.raise_for_status()
 
     except requests.exceptions.HTTPError as err_http:
@@ -155,27 +155,9 @@ def send_alert(message):
         send_mail(
             'Alert',
             message,
-            EMAIL_HOST_USER,
-            [EMAIL_RECEPIENT],
+            settings.EMAIL_HOST_USER,
+            [settings.EMAIL_RECEPIENT],
             fail_silently=False,
         )
     except SMTPException:
         pass
-
-# payload = {
-#     "controllers": [
-#         {
-#             "name": "air_conditioner",
-#             "value": "false"
-#         },
-#         {
-#             "name": "bedroom_light",
-#             "value": "false"
-#         },
-#         {
-#             "name": "bathroom_motion",
-#             "value": "false"
-#         },
-#
-#     ]
-# }
