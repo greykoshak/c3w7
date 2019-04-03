@@ -9,7 +9,7 @@ from django.core.mail import send_mail
 from django.http import HttpResponse
 
 from django.conf import settings  # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-from requests import RequestException
+from requests import RequestException, HTTPError
 
 from .models import Setting
 
@@ -37,20 +37,22 @@ def smart_home_manager():
     # 3. Температура горячей воды (бойлер)
     hot_water_target_temperature = AccessBD.get_value_DB("hot_water_target_temperature", 80)
 
-    if (current_state['boiler_temperature'] <= int(hot_water_target_temperature * 0.9)) and \
+    if current_state['cold_water'] and (current_state['boiler_temperature'] <= int(hot_water_target_temperature * 0.9)) and \
             not current_state['boiler'] and not current_state['leak_detector']:
         new_states['boiler'] = True
-    elif (current_state['boiler_temperature'] > int(hot_water_target_temperature * 1.1)) and \
-            current_state['boiler']:
+    elif current_state['boiler'] and \
+            (not current_state['cold_water'] or current_state['cold_water'] and
+             current_state['boiler_temperature'] > int(hot_water_target_temperature * 1.1)):
         new_states['boiler'] = False
 
     # 5. Управлением шторами
-    if current_state['outdoor_light'] <= 50 and not current_state['bedroom_light'] and \
-            current_state['curtains'] == 'close':
-        new_states['curtains'] = "open"  # Open curtains
-    elif (current_state['outdoor_light'] > 50 or current_state['bedroom_light']) and \
-            current_state['curtains'] == 'open':
-        new_states['curtains'] = "close"  # Close curtains
+    if current_state['curtains'] != 'slightly_open':
+        if current_state['outdoor_light'] <= 50 and not current_state['bedroom_light'] and \
+                current_state['curtains'] == 'close':
+            new_states['curtains'] = "open"  # Open curtains
+        elif (current_state['outdoor_light'] > 50 or current_state['bedroom_light']) and \
+                current_state['curtains'] == 'open':
+            new_states['curtains'] = "close"  # Close curtains
 
     # 6. Задымление
     if current_state['smoke_detector']:
@@ -77,16 +79,18 @@ def smart_home_manager():
 
     if new_states:
         change_state = CleverSystem.create_states(new_states)
-        code_status = CleverSystem.put_controller_state(change_state)
+        CleverSystem.put_controller_state(change_state)
 
     return
 
 
 class CleverSystem():
     HEADERS = {
-            'Authorization': 'Bearer {}'.format(settings.SMART_HOME_ACCESS_TOKEN)
-        }
+        'Authorization': 'Bearer {}'.format(settings.SMART_HOME_ACCESS_TOKEN)
+    }
     API_URL = settings.SMART_HOME_API_URL
+    ret_get_code = 0
+    ret_post_code = 0
 
     # Get states of all controllers
     @classmethod
@@ -94,6 +98,8 @@ class CleverSystem():
         controller_data = dict()
         try:
             response = requests.get(cls.API_URL, headers=cls.HEADERS)
+            cls.ret_get_code = response.status_code
+            # print(f"............get_code.........{cls.ret_get_code}....................")
             response.raise_for_status()
             r = response.json()
 
@@ -101,11 +107,11 @@ class CleverSystem():
                 data = r['data']
 
                 for rec in data:
-                    print(f"{rec['name']}: {rec['value']}")
+                    # print(f"{rec['name']}: {rec['value']}")
                     controller_data[rec['name']] = rec['value']
             else:
                 return HttpResponse(status=502)
-        except  (RequestException, KeyError, ValueError):
+        except (RequestException, KeyError, ValueError):
             return HttpResponse(status=502)
         return controller_data
 
@@ -116,8 +122,6 @@ class CleverSystem():
 
         if dict_states:
             change_state["controllers"] = list()
-            # change_state["controllers"] = [change_state['controllers']
-            #                                    .append({"name": key, "value": value}) for key, value in dict_states.items()]
             for key, value in dict_states.items():
                 change_state['controllers'].append({"name": key, "value": value})
         return change_state
@@ -128,8 +132,10 @@ class CleverSystem():
         try:
             r = requests.post(cls.API_URL, headers=cls.HEADERS,
                               data=json.dumps(payload_dict))
+            cls.ret_post_code = r.status_code
+            # print(f"========post_code====={cls.ret_post_code}=================")
             r.raise_for_status()
-        except  (RequestException, KeyError, ValueError):
+        except (RequestException, KeyError, ValueError, HTTPError):
             return HttpResponse(status=502)
         return r.status_code
 
@@ -160,13 +166,13 @@ class AccessBD():
 
 class AlertMail():
     message = "Leak!"
-    user_from = settings.EMAIL_HOST_USER
-    user_to = settings.EMAIL_RECEPIENT
+    USER_FROM = settings.EMAIL_HOST_USER
+    USER_TO = settings.EMAIL_RECEPIENT
 
     @classmethod
     def send_alert(cls):
         try:
-            send_mail('Alert', cls.message, cls.user_from, [cls.user_to],
+            send_mail('Alert', cls.message, cls.USER_FROM, [cls.USER_TO],
                       fail_silently=False)
         except SMTPException:
             pass
