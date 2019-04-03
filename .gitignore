@@ -155,3 +155,7 @@ fabric.properties
 *.log
 *.txt
 !requirements.txt
+
+*.DS_Store
+*.ipynb
+db.sqlite3
