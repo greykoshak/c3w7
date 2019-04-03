@@ -4,17 +4,17 @@ from django.views.generic import FormView
 from requests import RequestException
 
 from .form import ControllerForm
-from .tasks import get_controller_state, get_value_DB, set_value_DB, put_controller_state
+from .tasks import CleverSystem, AccessBD
 
 
 class ControllerView(FormView):
     form_class = ControllerForm
     template_name = 'core/control.html'
     success_url = reverse_lazy('form')
-    states = get_controller_state()
+    states = CleverSystem.get_controller_state()
 
     def get(self, request, *args, **kwargs):
-        self.states = get_controller_state()
+        self.states = CleverSystem.get_controller_state()
         if not self.states:
             return HttpResponse(status=502)
         return super().get(request, *args, **kwargs)
@@ -35,8 +35,8 @@ class ControllerView(FormView):
 
     def get_initial(self):
         # Set initial values from DB to form
-        bedroom_target_temperature = get_value_DB("bedroom_target_temperature", 21)
-        hot_water_target_temperature = get_value_DB("hot_water_target_temperature", 80)
+        bedroom_target_temperature = AccessBD.get_value_DB("bedroom_target_temperature", 21)
+        hot_water_target_temperature = AccessBD.get_value_DB("hot_water_target_temperature", 80)
 
         return {"bedroom_target_temperature": bedroom_target_temperature,
                 "hot_water_target_temperature": hot_water_target_temperature,
@@ -49,10 +49,10 @@ class ControllerView(FormView):
         # It should return an HttpResponse.
 
         bedroom = form.cleaned_data['bedroom_target_temperature']
-        bedroom_target_temperature = set_value_DB("bedroom_target_temperature", bedroom)
+        bedroom_target_temperature = AccessBD.set_value_DB("bedroom_target_temperature", bedroom)
 
         hot_water = form.cleaned_data['hot_water_target_temperature']
-        hot_water_target_temperature = set_value_DB("hot_water_target_temperature", hot_water)
+        hot_water_target_temperature = AccessBD.set_value_DB("hot_water_target_temperature", hot_water)
 
         bedroom_light = form.cleaned_data['bedroom_light']
         bathroom_light = form.cleaned_data['bathroom_light']
@@ -83,6 +83,6 @@ class ControllerView(FormView):
             for key, value in new_states.items():
                 change_state['controllers'].append({"name": key, "value": value})
 
-            put_controller_state(change_state)
+            CleverSystem.put_controller_state(change_state)
 
         return super(ControllerView, self).form_valid(form)

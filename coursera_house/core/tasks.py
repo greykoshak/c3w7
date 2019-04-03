@@ -13,12 +13,10 @@ from requests import RequestException
 
 from .models import Setting
 
-HEADERS = {'Authorization': 'Bearer {}'.format(settings.SMART_HOME_ACCESS_TOKEN)}
-
 
 @task()
 def smart_home_manager():
-    current_state = get_controller_state()
+    current_state = CleverSystem.get_controller_state()
     new_states = {}
 
     # 1. Утечка воды
@@ -27,7 +25,7 @@ def smart_home_manager():
             new_states['cold_water'] = False  # Close cold water
         if current_state['hot_water']:
             new_states['hot_water'] = False  # Close hot water
-        send_alert("Leak!")
+        AlertMail.send_alert()
 
     # 2. Нет холодной воды
     if not current_state['cold_water']:
@@ -37,12 +35,13 @@ def smart_home_manager():
             new_states['washing_machine'] = "off"  # Switch off boiler
 
     # 3. Температура горячей воды (бойлер)
-    hot_water_target_temperature = get_value_DB("hot_water_target_temperature", 80)
+    hot_water_target_temperature = AccessBD.get_value_DB("hot_water_target_temperature", 80)
 
     if (current_state['boiler_temperature'] <= int(hot_water_target_temperature * 0.9)) and \
             not current_state['boiler'] and not current_state['leak_detector']:
         new_states['boiler'] = True
-    elif (current_state['boiler_temperature'] > int(hot_water_target_temperature * 1.1)) and current_state['boiler']:
+    elif (current_state['boiler_temperature'] > int(hot_water_target_temperature * 1.1)) and \
+            current_state['boiler']:
         new_states['boiler'] = False
 
     # 5. Управлением шторами
@@ -67,7 +66,7 @@ def smart_home_manager():
             new_states['washing_machine'] = "off"  # Switch off washing_machine
 
     # 7. Температура в спальне (air_conditioner)
-    bedroom_target_temperature = get_value_DB("bedroom_target_temperature", 21)
+    bedroom_target_temperature = AccessBD.get_value_DB("bedroom_target_temperature", 21)
 
     if (current_state['bedroom_temperature'] > int(bedroom_target_temperature * 1.1)) and \
             not current_state['air_conditioner']:
@@ -77,87 +76,97 @@ def smart_home_manager():
         new_states['air_conditioner'] = False
 
     if new_states:
-        change_state = create_states(new_states)
-        put_controller_state(change_state)
+        change_state = CleverSystem.create_states(new_states)
+        code_status = CleverSystem.put_controller_state(change_state)
 
     return
 
 
-# Создать управляющую структуру для умного дома
-def create_states(dict_states: dict) -> dict:
-    change_state = {}
+class CleverSystem():
+    HEADERS = {
+            'Authorization': 'Bearer {}'.format(settings.SMART_HOME_ACCESS_TOKEN)
+        }
+    API_URL = settings.SMART_HOME_API_URL
 
-    if dict_states:
-        change_state["controllers"] = list()
-        # change_state["controllers"] = [change_state['controllers']
-        #                                    .append({"name": key, "value": value}) for key, value in dict_states.items()]
-        for key, value in dict_states.items():
-            change_state['controllers'].append({"name": key, "value": value})
+    # Get states of all controllers
+    @classmethod
+    def get_controller_state(cls):
+        controller_data = dict()
+        try:
+            response = requests.get(cls.API_URL, headers=cls.HEADERS)
+            response.raise_for_status()
+            r = response.json()
 
-    return change_state
+            if r['status'] == 'ok':
+                data = r['data']
 
-
-# Get states of all controllers
-def get_controller_state():
-    controller_data = dict()
-
-    try:
-        response = requests.get(settings.SMART_HOME_API_URL, headers=HEADERS)
-        response.raise_for_status()
-        r = response.json()
-
-        if r['status'] == 'ok':
-            data = r['data']
-
-            for rec in data:
-                print(f"{rec['name']}: {rec['value']}")
-                controller_data[rec['name']] = rec['value']
-        else:
+                for rec in data:
+                    print(f"{rec['name']}: {rec['value']}")
+                    controller_data[rec['name']] = rec['value']
+            else:
+                return HttpResponse(status=502)
+        except  (RequestException, KeyError, ValueError):
             return HttpResponse(status=502)
-    except  (RequestException, KeyError, ValueError):
-        return HttpResponse(status=502)
-    return controller_data
+        return controller_data
+
+    # Создать управляющую структуру для умного дома, понятной API
+    @staticmethod
+    def create_states(dict_states: dict) -> dict:
+        change_state = {}
+
+        if dict_states:
+            change_state["controllers"] = list()
+            # change_state["controllers"] = [change_state['controllers']
+            #                                    .append({"name": key, "value": value}) for key, value in dict_states.items()]
+            for key, value in dict_states.items():
+                change_state['controllers'].append({"name": key, "value": value})
+        return change_state
+
+    # Record new states of controllers
+    @classmethod
+    def put_controller_state(cls, payload_dict: dict):
+        try:
+            r = requests.post(cls.API_URL, headers=cls.HEADERS,
+                              data=json.dumps(payload_dict))
+            r.raise_for_status()
+        except  (RequestException, KeyError, ValueError):
+            return HttpResponse(status=502)
+        return r.status_code
 
 
-# Record new states of controllers
-def put_controller_state(payload_dict: dict):
-    try:
-        r = requests.post(settings.SMART_HOME_API_URL, headers=HEADERS, data=json.dumps(payload_dict))
-        r.raise_for_status()
+# ------------------------------ EOClass CleverSystem() ----------------------------------
 
-    except requests.exceptions.HTTPError as err_http:
-        print("HTTP error:", err_http)
-    return
+class AccessBD():
+    # Get value from DB
+    @staticmethod
+    def get_value_DB(controller_name: str, default_value: int) -> int:
+        try:
+            obj = Setting.objects.get(controller_name=controller_name)
+        except Setting.DoesNotExist:
+            obj = Setting(controller_name=controller_name, value=default_value)
+            obj.save()
+        return obj.value
 
-
-# Get value from DB
-def get_value_DB(controller_name: str, default_value: int) -> int:
-    try:
-        obj = Setting.objects.get(controller_name=controller_name)
-    except Setting.DoesNotExist:
-        obj = Setting(controller_name=controller_name, value=default_value)
-        obj.save()
-    return obj.value
-
-
-def set_value_DB(controller_name: str, current_value: int):
-    try:
-        obj = Setting.objects.get(controller_name=controller_name)
-        obj.value = current_value
-        obj.save()
-    except Setting.DoesNotExist:
-        return HttpResponse(status=502)
-    return obj.value
+    @staticmethod
+    def set_value_DB(controller_name: str, current_value: int):
+        try:
+            obj = Setting.objects.get(controller_name=controller_name)
+            obj.value = current_value
+            obj.save()
+        except Setting.DoesNotExist:
+            return HttpResponse(status=502)
+        return obj.value
 
 
-def send_alert(message):
-    try:
-        send_mail(
-            'Alert',
-            message,
-            settings.EMAIL_HOST_USER,
-            [settings.EMAIL_RECEPIENT],
-            fail_silently=False,
-        )
-    except SMTPException:
-        pass
+class AlertMail():
+    message = "Leak!"
+    user_from = settings.EMAIL_HOST_USER
+    user_to = settings.EMAIL_RECEPIENT
+
+    @classmethod
+    def send_alert(cls):
+        try:
+            send_mail('Alert', cls.message, cls.user_from, [cls.user_to],
+                      fail_silently=False)
+        except SMTPException:
+            pass
