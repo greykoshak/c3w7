@@ -10,14 +10,16 @@ class ControllerView(FormView):
     form_class = ControllerForm
     template_name = 'core/control.html'
     success_url = reverse_lazy('form')
-    states = CleverSystem.get_controller_state()
+    states = None
 
     def get(self, request, *args, **kwargs):
+        self.states = CleverSystem.get_controller_state()
         if CleverSystem.ret_get_code != 200:
             return HttpResponse(status=502)
         return super().get(request, *args, **kwargs)
 
     def post(self, request, *args, **kwargs):
+        self.states = CleverSystem.get_controller_state()
         if CleverSystem.ret_get_code != 200:
             return HttpResponse(status=502)
         return super().post(request, *args, **kwargs)
@@ -61,10 +63,10 @@ class ControllerView(FormView):
             if (self.states['bedroom_temperature'] > int(bedroom_target_temperature * 1.1)) and \
                     not self.states['air_conditioner']:
                 new_states['air_conditioner'] = True
-            elif self.states['bedroom_temperature'] <= int(bedroom_target_temperature * 0.9) and \
+            elif self.states['bedroom_temperature'] < int(bedroom_target_temperature * 0.9) and \
                     self.states['air_conditioner']:
                 new_states['air_conditioner'] = False
-            if (self.states['boiler_temperature'] <= int(hot_water_target_temperature * 0.9)) and \
+            if (self.states['boiler_temperature'] < int(hot_water_target_temperature * 0.9)) and \
                     not self.states['boiler'] and not self.states['leak_detector']:
                 new_states['boiler'] = True
             elif self.states['boiler'] and \

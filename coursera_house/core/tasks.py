@@ -47,7 +47,7 @@ def smart_home_manager():
 
     # 5. Управлением шторами
     if current_state['curtains'] != 'slightly_open':
-        if current_state['outdoor_light'] <= 50 and not current_state['bedroom_light'] and \
+        if current_state['outdoor_light'] < 50 and not current_state['bedroom_light'] and \
                 current_state['curtains'] == 'close':
             new_states['curtains'] = "open"  # Open curtains
         elif (current_state['outdoor_light'] > 50 or current_state['bedroom_light']) and \
@@ -73,7 +73,7 @@ def smart_home_manager():
     if (current_state['bedroom_temperature'] > int(bedroom_target_temperature * 1.1)) and \
             not current_state['air_conditioner']:
         new_states['air_conditioner'] = True
-    elif current_state['bedroom_temperature'] <= int(bedroom_target_temperature * 0.9) and \
+    elif current_state['bedroom_temperature'] < int(bedroom_target_temperature * 0.9) and \
             not current_state['air_conditioner']:
         new_states['air_conditioner'] = False
 
@@ -99,7 +99,6 @@ class CleverSystem():
         try:
             response = requests.get(cls.API_URL, headers=cls.HEADERS)
             cls.ret_get_code = response.status_code
-            # print(f"............get_code.........{cls.ret_get_code}....................")
             response.raise_for_status()
             r = response.json()
 
@@ -133,7 +132,6 @@ class CleverSystem():
             r = requests.post(cls.API_URL, headers=cls.HEADERS,
                               data=json.dumps(payload_dict))
             cls.ret_post_code = r.status_code
-            # print(f"========post_code====={cls.ret_post_code}=================")
             r.raise_for_status()
         except (RequestException, KeyError, ValueError, HTTPError):
             return HttpResponse(status=502)
