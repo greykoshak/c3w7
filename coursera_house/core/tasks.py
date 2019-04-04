@@ -5,10 +5,9 @@ from smtplib import SMTPException
 
 import requests
 from celery import task
+from django.conf import settings  # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 from django.core.mail import send_mail
 from django.http import HttpResponse
-
-from django.conf import settings  # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 from requests import RequestException, HTTPError
 
 from .models import Setting
@@ -19,65 +18,19 @@ def smart_home_manager():
     current_state = CleverSystem.get_controller_state()
     new_states = {}
 
-    # # 1. Утечка воды
-    # if current_state['leak_detector']:
-    #     if current_state['cold_water']:
-    #         new_states['cold_water'] = False  # Close cold water
-    #     if current_state['hot_water']:
-    #         new_states['hot_water'] = False  # Close hot water
-    #     AlertMail.send_alert()
-    ControlCmd.is_leak_detector(current_state, new_states)
+    if not ControlCmd.is_leak_detector(current_state, new_states):
+        # 2. Нет холодной воды
+        ControlCmd.is_cold_water_detector(current_state, new_states)
 
-    # # 2. Нет холодной воды
-    # if not current_state['cold_water']:
-    #     if current_state['boiler']:
-    #         new_states['boiler'] = False  # Switch off boiler
-    #     if current_state['washing_machine'] == 'on':
-    #         new_states['washing_machine'] = "off"  # Switch off boiler
-    ControlCmd.is_cold_water_detector(current_state, new_states)
+    if not ControlCmd.is_smoke_detector(current_state, new_states):
+        # 3. Управление бойлером
+        ControlCmd.is_needed_hot_water(current_state, new_states)
 
-    # # 3. Управление бойлером
-    # hot_water_target_temperature = AccessBD.get_value_DB("hot_water_target_temperature", 80)
-    #
-    # if not current_state['boiler'] and current_state['cold_water'] and \
-    #         (current_state['boiler_temperature'] < int(hot_water_target_temperature * 0.9)):
-    #     new_states['boiler'] = True
-    # elif current_state['boiler'] and \
-    #         current_state['boiler_temperature'] > int(hot_water_target_temperature * 1.1):
-    #     new_states['boiler'] = False
-    ControlCmd.is_needed_hot_water(current_state, new_states)
+        # 7. Температура в спальне (air_conditioner)
+        ControlCmd.is_needed_change_temperature(current_state, new_states)
 
     # 5. Управлением шторами
-    if current_state['curtains'] != 'slightly_open':
-        if current_state['curtains'] == 'close' and \
-                (current_state['outdoor_light'] < 50 or not current_state['bedroom_light']):
-            new_states['curtains'] = "open"  # Open curtains
-        elif current_state['curtains'] == 'open' and \
-                (current_state['outdoor_light'] > 50 or current_state['bedroom_light']):
-            new_states['curtains'] = "close"  # Close curtains
-
-    # 6. Задымление
-    if current_state['smoke_detector']:
-        if current_state['air_conditioner']:
-            new_states['air_conditioner'] = False  # Switch off air_conditioner
-        if current_state['bedroom_light']:
-            new_states['bedroom_light'] = False  # Switch off bedroom_light
-        if current_state['bathroom_light']:
-            new_states['bathroom_light'] = False  # Switch off bathroom_light
-        if current_state['boiler']:
-            new_states['boiler'] = False  # Switch off boiler
-        if current_state['washing_machine'] == 'on':
-            new_states['washing_machine'] = "off"  # Switch off washing_machine
-
-    # 7. Температура в спальне (air_conditioner)
-    bedroom_target_temperature = AccessBD.get_value_DB("bedroom_target_temperature", 21)
-
-    if not current_state['air_conditioner'] and not current_state['smoke_detector'] and \
-            (current_state['bedroom_temperature'] > int(bedroom_target_temperature * 1.1)):
-        new_states['air_conditioner'] = True
-    elif current_state['air_conditioner'] and \
-            current_state['bedroom_temperature'] < int(bedroom_target_temperature * 0.9):
-        new_states['air_conditioner'] = False
+    ControlCmd.is_curtains_slightly_open(current_state, new_states)
 
     if new_states:
         change_state = CleverSystem.create_states(new_states)
@@ -85,8 +38,9 @@ def smart_home_manager():
 
     return
 
+
 # -------------------------------------- Defines classes -----------------------------------------
-class CleverSystem():
+class CleverSystem:
     HEADERS = {
         'Authorization': 'Bearer {}'.format(settings.SMART_HOME_ACCESS_TOKEN)
     }
@@ -139,18 +93,25 @@ class CleverSystem():
             return HttpResponse(status=502)
         return r.status_code
 
+
 # ------------------------------ EOClass CleverSystem() ----------------------------------
 
-class ControlCmd():
+class ControlCmd:
     @staticmethod
     def is_leak_detector(states: dict, change: dict):
         # 1. Утечка воды
         if states['leak_detector']:
             if states['cold_water']:
                 change['cold_water'] = False  # Close cold water
+                if states['boiler']:
+                    change['boiler'] = False  # Switch off boiler
+                if states['washing_machine'] == 'on':
+                    change['washing_machine'] = "off"  # Switch off boiler
             if states['hot_water']:
                 change['hot_water'] = False  # Close hot water
             AlertMail.send_alert()
+            return True
+        return False
 
     @staticmethod
     def is_cold_water_detector(states: dict, change: dict):
@@ -166,16 +127,57 @@ class ControlCmd():
         # 3. Управление бойлером
         hot_water_target_temperature = AccessBD.get_value_DB("hot_water_target_temperature", 80)
 
-        if not states['boiler'] and states['cold_water'] and \
+        if not states['boiler'] and states['cold_water'] and not states['leak_detector'] and \
                 (states['boiler_temperature'] < int(hot_water_target_temperature * 0.9)):
             change['boiler'] = True
         elif states['boiler'] and \
                 states['boiler_temperature'] > int(hot_water_target_temperature * 1.1):
             change['boiler'] = False
 
+    @staticmethod
+    def is_curtains_slightly_open(states: dict, change: dict):
+        # 5. Управлением шторами
+        if states['curtains'] != 'slightly_open':
+            if states['curtains'] == 'close' and \
+                    (states['outdoor_light'] < 50 and not states['bedroom_light']):
+                change['curtains'] = "open"  # Open curtains
+            elif states['curtains'] == 'open' and \
+                    (states['outdoor_light'] > 50 or states['bedroom_light']):
+                change['curtains'] = "close"  # Close curtains
+
+    @staticmethod
+    def is_smoke_detector(states: dict, change: dict):
+        # 6. Задымление
+        if states['smoke_detector']:
+            if states['air_conditioner']:
+                change['air_conditioner'] = False  # Switch off air_conditioner
+            if states['bedroom_light']:
+                change['bedroom_light'] = False  # Switch off bedroom_light
+            if states['bathroom_light']:
+                change['bathroom_light'] = False  # Switch off bathroom_light
+            if states['boiler']:
+                change['boiler'] = False  # Switch off boiler
+            if states['washing_machine'] == 'on':
+                change['washing_machine'] = "off"  # Switch off washing_machine
+            return True
+        return False
+
+    @staticmethod
+    def is_needed_change_temperature(states: dict, change: dict):
+        # 7. Температура в спальне (air_conditioner)
+        bedroom_target_temperature = AccessBD.get_value_DB("bedroom_target_temperature", 21)
+
+        if not states['air_conditioner'] and \
+                (states['bedroom_temperature'] > int(bedroom_target_temperature * 1.1)):
+            change['air_conditioner'] = True
+        elif states['air_conditioner'] and \
+                states['bedroom_temperature'] < int(bedroom_target_temperature * 0.9):
+            change['air_conditioner'] = False
+
+
 # ------------------------------ EOClass ControlCmd() ----------------------------------
 
-class AccessBD():
+class AccessBD:
     # Get value from DB
     @staticmethod
     def get_value_DB(controller_name: str, default_value: int) -> int:
@@ -196,9 +198,10 @@ class AccessBD():
             return HttpResponse(status=502)
         return obj.value
 
+
 # ------------------------------ EOClass AccessBD() ----------------------------------
 
-class AlertMail():
+class AlertMail:
     message = "Leak!"
     USER_FROM = settings.EMAIL_HOST_USER
     USER_TO = settings.EMAIL_RECEPIENT
