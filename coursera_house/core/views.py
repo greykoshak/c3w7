@@ -3,7 +3,7 @@ from django.urls import reverse_lazy
 from django.views.generic import FormView
 
 from .form import ControllerForm
-from .tasks import CleverSystem, AccessBD
+from .tasks import CleverSystem, AccessBD, ControlCmd
 
 
 class ControllerView(FormView):
@@ -46,35 +46,25 @@ class ControllerView(FormView):
         # It should return an HttpResponse.
 
         bedroom = form.cleaned_data['bedroom_target_temperature']
-        bedroom_target_temperature = AccessBD.set_value_DB("bedroom_target_temperature", bedroom)
+        AccessBD.set_value_DB("bedroom_target_temperature", bedroom)
 
         hot_water = form.cleaned_data['hot_water_target_temperature']
-        hot_water_target_temperature = AccessBD.set_value_DB("hot_water_target_temperature", hot_water)
+        AccessBD.set_value_DB("hot_water_target_temperature", hot_water)
 
         bedroom_light = form.cleaned_data['bedroom_light']
         bathroom_light = form.cleaned_data['bathroom_light']
 
         new_states = {}
-        if not self.states['smoke_detector']:
+        if not ControlCmd.is_smoke_detector(self.states, new_states):
             if bathroom_light != self.states['bathroom_light']:
                 new_states['bathroom_light'] = bathroom_light
             if bedroom_light != self.states['bedroom_light']:
                 new_states['bedroom_light'] = bedroom_light
-            if (self.states['bedroom_temperature'] > int(bedroom_target_temperature * 1.1)) and \
-                    not self.states['air_conditioner']:
-                new_states['air_conditioner'] = True
-            elif self.states['bedroom_temperature'] < int(bedroom_target_temperature * 0.9) and \
-                    self.states['air_conditioner']:
-                new_states['air_conditioner'] = False
-            if (self.states['boiler_temperature'] < int(hot_water_target_temperature * 0.9)) and \
-                    not self.states['boiler'] and not self.states['leak_detector']:
-                new_states['boiler'] = True
-            elif self.states['boiler'] and \
-                    (not self.states['cold_water'] or self.states['cold_water'] and
-                     self.states['boiler_temperature'] > int(hot_water_target_temperature * 1.1)):
-                new_states['boiler'] = False
 
-            change_state = CleverSystem.create_states(new_states)
-            CleverSystem.put_controller_state(change_state)
+            ControlCmd.is_needed_change_temperature(self.states, new_states)
+            ControlCmd.is_needed_hot_water(self.states, new_states)
+
+        change_state = CleverSystem.create_states(new_states)
+        CleverSystem.put_controller_state(change_state)
 
         return super(ControllerView, self).form_valid(form)
